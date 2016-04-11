@@ -35,6 +35,7 @@
 #include <linux/fs_struct.h>
 #include <linux/posix_acl.h>
 #include <linux/hash.h>
+#include <linux/gobohide.h>
 #include <asm/uaccess.h>
 
 #include "internal.h"
@@ -3689,6 +3690,7 @@ SYSCALL_DEFINE2(mkdir, const char __user *, pathname, umode_t, mode)
 
 int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
+	struct hide *hidden = NULL;
 	int error = may_delete(dir, dentry, 1);
 
 	if (error)
@@ -3720,8 +3722,13 @@ int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 out:
 	inode_unlock(dentry->d_inode);
 	dput(dentry);
-	if (!error)
-		d_delete(dentry);
+        if (!error) {
+                if (hidden)
+                        gobohide_remove(hidden);
+                d_delete(dentry);
+        }
+        if (hidden)
+                gobohide_put(hidden);
 	return error;
 }
 EXPORT_SYMBOL(vfs_rmdir);
@@ -3810,6 +3817,7 @@ SYSCALL_DEFINE1(rmdir, const char __user *, pathname)
  */
 int vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegated_inode)
 {
+	struct hide *hidden = NULL;
 	struct inode *target = dentry->d_inode;
 	int error = may_delete(dir, dentry, 0);
 
@@ -3818,6 +3826,13 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegate
 
 	if (!dir->i_op->unlink)
 		return -EPERM;
+
+	if (dentry->d_inode) {
+		ino_t ino = gobohide_translate_inode_nr(dentry->d_inode);
+		if (ino)
+			hidden = gobohide_get(ino, dentry->d_name.name,
+				dentry->d_name.len, dentry->d_parent);
+	}
 
 	inode_lock(target);
 	if (is_local_mountpoint(dentry))
@@ -3840,10 +3855,14 @@ out:
 
 	/* We don't d_delete() NFS sillyrenamed files--they still exist. */
 	if (!error && !(dentry->d_flags & DCACHE_NFSFS_RENAMED)) {
+		if (hidden)
+			gobohide_remove(hidden);
 		fsnotify_link_count(target);
 		d_delete(dentry);
 	}
 
+	if (hidden)
+		gobohide_put(hidden);
 	return error;
 }
 EXPORT_SYMBOL(vfs_unlink);
@@ -3945,6 +3964,7 @@ SYSCALL_DEFINE1(unlink, const char __user *, pathname)
 
 int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname)
 {
+	struct hide *hidden = NULL;
 	int error = may_create(dir, dentry);
 
 	if (error)
@@ -3952,6 +3972,13 @@ int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname)
 
 	if (!dir->i_op->symlink)
 		return -EPERM;
+
+	if (dentry->d_inode) {
+		ino_t ino = gobohide_translate_inode_nr(dentry->d_inode);
+		if (ino)
+			hidden = gobohide_get(ino, dentry->d_name.name,
+				dentry->d_name.len, dentry->d_parent);
+	}
 
 	error = security_inode_symlink(dir, dentry, oldname);
 	if (error)

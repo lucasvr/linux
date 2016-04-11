@@ -18,6 +18,7 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/unistd.h>
+#include <linux/gobohide.h>
 
 #include <asm/uaccess.h>
 
@@ -72,6 +73,7 @@ struct readdir_callback {
 	struct dir_context ctx;
 	struct old_linux_dirent __user * dirent;
 	int result;
+	struct dentry *dentry;
 };
 
 static int fillonedir(struct dir_context *ctx, const char *name, int namlen,
@@ -120,6 +122,7 @@ SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+	buf.dentry = f.file->f_path.dentry;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (buf.result)
 		error = buf.result;
@@ -147,6 +150,7 @@ struct getdents_callback {
 	struct linux_dirent __user * previous;
 	int count;
 	int error;
+	struct dentry *dentry;
 };
 
 static int filldir(struct dir_context *ctx, const char *name, int namlen,
@@ -156,6 +160,7 @@ static int filldir(struct dir_context *ctx, const char *name, int namlen,
 	struct getdents_callback *buf =
 		container_of(ctx, struct getdents_callback, ctx);
 	unsigned long d_ino;
+	struct hide *hidden;
 	int reclen = ALIGN(offsetof(struct linux_dirent, d_name) + namlen + 2,
 		sizeof(long));
 
@@ -169,10 +174,20 @@ static int filldir(struct dir_context *ctx, const char *name, int namlen,
 	}
 	dirent = buf->previous;
 	if (dirent) {
+		hidden = gobohide_get(d_ino, name, namlen, buf->dentry);
+		if (hidden) {
+			gobohide_put(hidden);
+			return 0;
+		}
 		if (__put_user(offset, &dirent->d_off))
 			goto efault;
 	}
 	dirent = buf->current_dir;
+	hidden = gobohide_get(d_ino, name, namlen, buf->dentry);
+	if (hidden) {
+		gobohide_put(hidden);
+		return 0;
+	}
 	if (__put_user(d_ino, &dirent->d_ino))
 		goto efault;
 	if (__put_user(reclen, &dirent->d_reclen))
@@ -212,6 +227,7 @@ SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+	buf.dentry = f.file->f_path.dentry;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
@@ -232,12 +248,14 @@ struct getdents_callback64 {
 	struct linux_dirent64 __user * previous;
 	int count;
 	int error;
+	struct dentry *dentry;
 };
 
 static int filldir64(struct dir_context *ctx, const char *name, int namlen,
 		     loff_t offset, u64 ino, unsigned int d_type)
 {
 	struct linux_dirent64 __user *dirent;
+	struct hide *hidden;
 	struct getdents_callback64 *buf =
 		container_of(ctx, struct getdents_callback64, ctx);
 	int reclen = ALIGN(offsetof(struct linux_dirent64, d_name) + namlen + 1,
@@ -248,10 +266,20 @@ static int filldir64(struct dir_context *ctx, const char *name, int namlen,
 		return -EINVAL;
 	dirent = buf->previous;
 	if (dirent) {
+		hidden = gobohide_get(ino, name, namlen, buf->dentry);
+		if (hidden) {
+			gobohide_put(hidden);
+			return 0;
+		}
 		if (__put_user(offset, &dirent->d_off))
 			goto efault;
 	}
 	dirent = buf->current_dir;
+	hidden = gobohide_get(ino, name, namlen, buf->dentry);
+	if (hidden) {
+		gobohide_put(hidden);
+		return 0;
+	}
 	if (__put_user(ino, &dirent->d_ino))
 		goto efault;
 	if (__put_user(0, &dirent->d_off))
@@ -293,6 +321,7 @@ SYSCALL_DEFINE3(getdents64, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+	buf.dentry = f.file->f_path.dentry;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;

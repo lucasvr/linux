@@ -15,6 +15,7 @@
 #include <linux/writeback.h>
 #include <linux/buffer_head.h>
 #include <linux/falloc.h>
+#include <linux/gobohide.h>
 #include "internal.h"
 
 #include <asm/ioctls.h>
@@ -666,6 +667,10 @@ int do_vfs_ioctl(struct file *filp, unsigned int fd, unsigned int cmd,
 
 	case FIDEDUPERANGE:
 		return ioctl_file_dedupe_range(filp, argp);
+
+	case FIGOBOHIDE:
+		error = arg ? gobohide_fs_ioctl(inode, arg) : -EINVAL;
+		break;
 
 	default:
 		if (S_ISREG(inode->i_mode))

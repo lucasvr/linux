@@ -110,6 +110,16 @@ source "fs/udf/Kconfig"
 endmenu
 endif # BLOCK
 
+config GOBOHIDE_FS
+	bool "GoboHide support on file systems"
+	default y
+	help
+	  GoboHide is a general interface for providing real hidden files in
+	  a filesystem. GoboHide supports all filesystems sitting on the VFS,
+	  such as EXT3, SquashFS and JFFS2.
+	  To use it, see the documentation of the gobohide userspace tool at
+	  <http://gobolinux.org/?page=doc/articles/gobohide>.
+
 if BLOCK
 menu "DOS/FAT/NT Filesystems"
 
