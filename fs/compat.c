@@ -48,6 +48,7 @@
 #include <linux/slab.h>
 #include <linux/pagemap.h>
 #include <linux/aio.h>
+#include <linux/gobohide.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -844,6 +845,7 @@ struct compat_readdir_callback {
 	struct dir_context ctx;
 	struct compat_old_linux_dirent __user *dirent;
 	int result;
+	struct dentry *dentry;
 };
 
 static int compat_fillonedir(struct dir_context *ctx, const char *name,
@@ -893,6 +895,7 @@ COMPAT_SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+	buf.dentry = f.file->f_path.dentry;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (buf.result)
 		error = buf.result;
@@ -914,6 +917,7 @@ struct compat_getdents_callback {
 	struct compat_linux_dirent __user *previous;
 	int count;
 	int error;
+	struct dentry *dentry;
 };
 
 static int compat_filldir(struct dir_context *ctx, const char *name, int namlen,
@@ -923,6 +927,7 @@ static int compat_filldir(struct dir_context *ctx, const char *name, int namlen,
 	struct compat_getdents_callback *buf =
 		container_of(ctx, struct compat_getdents_callback, ctx);
 	compat_ulong_t d_ino;
+	struct hide *hidden;
 	int reclen = ALIGN(offsetof(struct compat_linux_dirent, d_name) +
 		namlen + 2, sizeof(compat_long_t));
 
@@ -936,10 +941,20 @@ static int compat_filldir(struct dir_context *ctx, const char *name, int namlen,
 	}
 	dirent = buf->previous;
 	if (dirent) {
+		hidden = gobohide_get(d_ino, name, namlen, buf->dentry);
+		if (hidden) {
+			gobohide_put(hidden);
+			return 0;
+		}
 		if (__put_user(offset, &dirent->d_off))
 			goto efault;
 	}
 	dirent = buf->current_dir;
+	hidden = gobohide_get(d_ino, name, namlen, buf->dentry);
+	if (hidden) {
+		gobohide_put(hidden);
+		return 0;
+	}
 	if (__put_user(d_ino, &dirent->d_ino))
 		goto efault;
 	if (__put_user(reclen, &dirent->d_reclen))
@@ -979,6 +994,7 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+	buf.dentry = f.file->f_path.dentry;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
@@ -1001,6 +1017,7 @@ struct compat_getdents_callback64 {
 	struct linux_dirent64 __user *previous;
 	int count;
 	int error;
+	struct dentry *dentry;
 };
 
 static int compat_filldir64(struct dir_context *ctx, const char *name,
@@ -1008,6 +1025,7 @@ static int compat_filldir64(struct dir_context *ctx, const char *name,
 			    unsigned int d_type)
 {
 	struct linux_dirent64 __user *dirent;
+	struct hide *hidden;
 	struct compat_getdents_callback64 *buf =
 		container_of(ctx, struct compat_getdents_callback64, ctx);
 	int reclen = ALIGN(offsetof(struct linux_dirent64, d_name) + namlen + 1,
@@ -1020,10 +1038,20 @@ static int compat_filldir64(struct dir_context *ctx, const char *name,
 	dirent = buf->previous;
 
 	if (dirent) {
+		hidden = gobohide_get(ino, name, namlen, buf->dentry);
+		if (hidden) {
+			gobohide_put(hidden);
+			return 0;
+		}
 		if (__put_user_unaligned(offset, &dirent->d_off))
 			goto efault;
 	}
 	dirent = buf->current_dir;
+	hidden = gobohide_get(ino, name, namlen, buf->dentry);
+	if (hidden) {
+		gobohide_put(hidden);
+		return 0;
+	}
 	if (__put_user_unaligned(ino, &dirent->d_ino))
 		goto efault;
 	off = 0;
@@ -1066,6 +1094,7 @@ COMPAT_SYSCALL_DEFINE3(getdents64, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+	buf.dentry = f.file->f_path.dentry;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;

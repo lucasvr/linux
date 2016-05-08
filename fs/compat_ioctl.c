@@ -57,6 +57,7 @@
 #include <linux/i2c-dev.h>
 #include <linux/atalk.h>
 #include <linux/gfp.h>
+#include <linux/gobohide.h>
 
 #include "internal.h"
 
@@ -910,6 +911,7 @@ COMPATIBLE_IOCTL(FIONCLEX)
 COMPATIBLE_IOCTL(FIOASYNC)
 COMPATIBLE_IOCTL(FIONBIO)
 COMPATIBLE_IOCTL(FIONREAD)  /* This is also TIOCINQ */
+COMPATIBLE_IOCTL(FIGOBOHIDE)
 COMPATIBLE_IOCTL(FS_IOC_FIEMAP)
 /* 0x00 */
 COMPATIBLE_IOCTL(FIBMAP)
@@ -1557,6 +1559,7 @@ COMPAT_SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd,
 	case FIONBIO:
 	case FIOASYNC:
 	case FIOQSIZE:
+	case FIGOBOHIDE:
 		break;
 
 #if defined(CONFIG_IA64) || defined(CONFIG_X86_64)
